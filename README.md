@@ -94,6 +94,8 @@ python -m venv .venv
 
 ## 相对上游的修复清单
 
+> 下表提到的 `config.txt` 均指**上游脚本**使用的凭据文件；本项目已改用 `config.json`。
+
 | # | 上游问题 | 修复方式 |
 |---|---|---|
 | 1 | `Login_whut.py:68` `encoding='utf=8'` 拼写错误，被裸 `except` 吞掉 → `config.txt` 永远读不到，每次退化为交互输入（**功能失效根因**） | 统一由 `whut_login/config.py` 以 `utf-8` 读取，异常类型明确为 `ConfigError` |
