@@ -8,8 +8,6 @@ from dataclasses import dataclass
 
 import requests
 
-from .config import encode_password
-
 DEFAULT_PORTAL = "http://172.30.16.34"
 AUTH_PATH = "/include/auth_action.php"
 REFERER_PATH = "/srun_portal_pc.php?ac_id=5&url=1.1.1.1"
@@ -92,14 +90,18 @@ class PortalClient:
         }
 
     def build_payload(self, username: str, password: str, ac_id: int) -> dict[str, str]:
-        """构造认证表单；密码统一编码为 ``{B}`` + base64，MAC 取本机真实值。"""
+        """构造认证表单。
+
+        密码按**明文**提交：老版 srun 门户同样接受明文（``{B}`` + base64 也被接受，
+        若配置里是那种写法，读取时已还原为明文）。MAC 取本机真实值。
+        """
         return {
             "action": "login",
             "ajax": "1",
             "ac_id": str(ac_id),
             "nas_ip": "",
             "username": username,
-            "password": encode_password(password),
+            "password": password,
             "save_me": "1",
             "user_ip": "",
             "user_mac": get_mac_address(),

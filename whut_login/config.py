@@ -7,8 +7,8 @@
       "password": "你的密码"
     }
 
-``password`` 支持明文或 ``{B}`` + base64 两种写法（读取时统一还原为明文，
-写出时默认以 ``{B}`` + base64 保存）。
+``password`` 支持明文或 ``{B}`` + base64 两种写法（读取时统一还原为明文），
+写出时默认保存明文（``encode=True`` 可改存 ``{B}`` + base64 形式）。
 
 .. warning::
    本文件只做「与代码分离 + 不入版本库」的隔离，**并非加密存储**。
@@ -103,11 +103,12 @@ def save_config(
     username: str,
     password: str,
     *,
-    encode: bool = True,
+    encode: bool = False,
 ) -> Path:
     """写入凭据文件并返回实际路径。
 
-    默认以 ``{B}`` + base64 形式保存密码，与上游脚本保持一致。
+    默认按明文保存密码；``encode=True`` 时改存 ``{B}`` + base64 形式
+    （两种写法读取时都能还原为明文）。
     """
     config_path = Path(path) if path is not None else default_config_path()
     config_path.parent.mkdir(parents=True, exist_ok=True)

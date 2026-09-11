@@ -94,17 +94,17 @@ class TestConfigFile:
         save_config(path, "u1", "s3cret-pwd")
         assert load_config(path) == ("u1", "s3cret-pwd")
 
-    def test_保存内容为合法_json_且密码为_b_前缀(self, tmp_path):
+    def test_默认保存明文密码(self, tmp_path):
         path = tmp_path / "config.json"
         save_config(path, "u1", "p1")
         data = json.loads(path.read_text(encoding="utf-8"))
         assert data["username"] == "u1"
-        assert data["password"].startswith("{B}")
+        assert data["password"] == "p1"
 
-    def test_可保存明文密码(self, tmp_path):
+    def test_可选保存_b_前缀_base64_密码(self, tmp_path):
         path = tmp_path / "config.json"
-        save_config(path, "u1", "p1", encode=False)
-        assert json.loads(path.read_text(encoding="utf-8"))["password"] == "p1"
+        save_config(path, "u1", "p1", encode=True)
+        assert json.loads(path.read_text(encoding="utf-8"))["password"].startswith("{B}")
 
     def test_中文密码往返(self, tmp_path):
         path = tmp_path / "config.json"

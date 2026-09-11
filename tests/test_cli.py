@@ -146,7 +146,7 @@ class TestCredentials:
         assert cli.main(["-c", str(config), "--no-proxy"]) == 0
         data = json.loads(config.read_text(encoding="utf-8"))
         assert data["username"] == "testuser"
-        assert data["password"].startswith("{B}")
+        assert data["password"] == "s3cret"
 
     def test_save_config_显式保存命令行凭据(self, monkeypatch, tmp_path):
         config = tmp_path / "config.json"
@@ -157,7 +157,7 @@ class TestCredentials:
         assert cli.main(args) == 0
         data = json.loads(config.read_text(encoding="utf-8"))
         assert data["username"] == "u"
-        assert data["password"].startswith("{B}")
+        assert data["password"] == "p"
 
 
 class TestRetry:

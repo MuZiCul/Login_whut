@@ -62,7 +62,8 @@ python -m venv .venv
 }
 ```
 
-- `password` 支持明文或 `{B}` + base64 两种写法：发送前统一编码，读取时自动还原明文。
+- `password` 默认按**明文**保存；也兼容 `{B}` + base64 旧写法，读取时自动还原明文。
+- 认证请求中该字段按**明文**提交（老版 srun 门户接受明文，详见「认证协议要点」）。
 - 字段缺失、类型错误、JSON 语法错误、非法 base64 都会抛出明确的 `ConfigError`，不会静默使用错误凭据。
 - 该文件已写入 `.gitignore`，**不会进入版本库**。
 - 读取优先级：命令行参数 → `config.json` → 交互输入（交互输入后若文件不存在会自动生成）。
@@ -79,7 +80,7 @@ python -m venv .venv
 | 参数 | 说明 |
 |---|---|
 | `-u, --username` | 账号，优先于凭据文件 |
-| `-p, --password` | 密码（明文或 `{B}+base64`），优先于凭据文件 |
+| `-p, --password` | 密码（明文，也接受 `{B}+base64`），优先于凭据文件 |
 | `-c, --config` | 凭据文件路径，默认项目根目录 `config.json` |
 | `--portal` | 门户地址，默认 `http://172.30.16.34` |
 | `--ac-id` | 指定 `ac_id`；缺省时依次尝试 `0` 与 `5` |
@@ -110,6 +111,7 @@ python -m venv .venv
 | 9 | 交互输入密码明文回显 | 改用 `getpass` 掩码输入 |
 | 10 | 三份脚本逻辑重复（近 120 行 × 3） | 合并为单一实现，`ac_id` 候选自动逐个尝试 |
 | 11 | 凭据以两行纯文本存放，格式脆弱、无字段校验、易被误提交 | 改为独立 `config.json`（含字段级校验与明确报错），新增 `--init-config` 生成入口，并纳入 `.gitignore` |
+| 12 | 上游把密码包装成 `{B}` + base64 后提交 | 改为**明文提交**（与同校其他实现一致，老版门户本就接受明文）；仍兼容读取 `{B}` 形式的旧配置并自动还原 |
 
 > `WHUT/LWNK_hardcoded.py` 里仍保留上游硬编码的账号密码（作为原始快照）。该文件属私有仓库内容，建议后续单独从上游仓库删除或改为读取环境变量。
 
@@ -119,11 +121,43 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-覆盖范围：凭据编码 / JSON 解析 / 读写与字段校验异常、表单与请求头构造（含上述 bug 的回归用例）、`ac_id` 回退、连通性判定边界、代理构造，以及 CLI 的 `--init-config`、凭据优先级、凭据落盘、重试与退出码。全部用假 Session / 假客户端，不发起真实网络请求。
+覆盖范围：凭据编码 / JSON 解析 / 读写与字段校验异常、表单与请求头构造（含密码明文提交与上述 bug 的回归用例）、`ac_id` 回退、连通性判定边界、代理构造，以及 CLI 的 `--init-config`、凭据优先级、凭据落盘、重试与退出码。全部用假 Session / 假客户端，不发起真实网络请求。
 
 ## 认证协议要点
 
-- 端点：`POST http://172.30.16.34/include/auth_action.php`（srun 门户）
-- 表单：`action=login`、`ajax=1`、`ac_id`、`username`、`password`（`{B}` + base64）、`save_me=1`、`nas_ip`、`user_ip`、`user_mac`
+### 深澜（srun）是什么
+
+杭州深澜软件有限公司（1999 年成立，总部杭州）的认证计费产品线（Srun 3000 / Srun 4K / OTP），
+支持 Portal / PPPoE / 802.1x 等接入方式。校园网里连上 Wi-Fi 后自动弹出的认证页即其 Portal，
+武汉理工用的就是它。
+
+### 本项目使用的接口
+
+- 端点：`POST http://172.30.16.34/include/auth_action.php`（老版 srun Portal 的 AJAX 接口）
+- 表单：`action=login`、`ajax=1`、`ac_id`、`username`、`password`、`save_me=1`、`nas_ip`、`user_ip`、`user_mac`
 - 成功判定：响应体包含 `login_ok` 或 `successful`
 - `ac_id` 会随校区 / 接入设备变化，登录不上时可先用 `--ac-id` 试不同取值
+
+### 密码字段的编码前缀（深澜生态通用约定）
+
+| 前缀 | 含义 | 适用版本 |
+|---|---|---|
+| 无前缀 | **明文**（本项目采用） | 老版 Portal |
+| `{B}` | Base64 编码（`B` 即 Base64，**是编码不是加密**） | 老版 Portal |
+| `{MD5}` | `HMAC-MD5(password, key=challenge)` | 新版 challenge 协议 |
+| `{SRBX1}` | XOR 加密 + 非标准字符表 base64，用于新版 `i` 参数 | 新版协议 |
+| — | `chksum` = SHA1 校验和 | 新版协议 |
+
+老版门户对无前缀明文与 `{B}` + base64 都能识别，因此本项目直接提交明文；配置文件中若沿用
+`{B}` 写法，读取时会先还原为明文再提交。
+
+### 武汉理工认证接口的演进（排查登录失败时先看这里）
+
+| 阶段 | 接口 | 密码 / 附加要求 |
+|---|---|---|
+| 老 PC Portal | `http://172.30.16.34/srun_portal_pc.php` | 明文，表单含 `ac_id` |
+| 老 AJAX | `http://172.30.16.34/include/auth_action.php` | 明文或 `{B}`+base64（**本项目**） |
+| 新 API | `http://172.30.21.100/api/account/login` | 明文 + `x-csrf-token` 头；需先 `GET /api/csrf-token`，`nasId` 由 msftconnecttest 重定向解析 |
+
+校网络信息中心在 2023-02、2024-04、2026-02 多次升级认证系统。**若实测登录失败，请先 F12 抓包确认
+当前接口与字段**，不要在旧接口上反复调 `ac_id`。

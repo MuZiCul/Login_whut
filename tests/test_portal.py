@@ -73,10 +73,16 @@ class TestBuildPayload:
         assert payload["save_me"] == "1"
         assert payload["username"] == "testuser"
 
-    def test_密码被编码为_b_前缀_base64(self, make_client):
+    def test_密码按明文提交(self, make_client):
         client, _ = make_client(["login_ok"])
         payload = client.build_payload("testuser", "s3cret", 0)
-        assert payload["password"].startswith("{B}")
+        assert payload["password"] == "s3cret"
+
+    def test_客户端不对密码做二次加工(self, make_client):
+        """``{B}`` 前缀不再由客户端包装；传什么发什么。"""
+        client, _ = make_client(["login_ok"])
+        payload = client.build_payload("u", "{B}c2VjcmV0", 0)
+        assert payload["password"] == "{B}c2VjcmV0"
 
     def test_user_mac_为真实地址字符串(self, make_client):
         """回归：上游漏写调用括号，发送的是 bound method 字符串。"""
