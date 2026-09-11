@@ -1,3 +1,0 @@
-# 开发依赖（含运行时依赖）
--r requirements.txt
-pytest>=8.0

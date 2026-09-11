@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
 
 # ---- 本地虚拟环境 / 依赖 ----
 .venv/

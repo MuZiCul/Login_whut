@@ -2,7 +2,7 @@
 
 对 [MuZiCul/little_demo](https://github.com/MuZiCul/little_demo) 中 `WHUT/` 目录三份登录脚本的**修复与合并版**：
 把原先重复的三份实现（`Login_whut.py` / `LWNK_min.py` / `LWNK_hardcoded.py`）整合为一个包 + 一个入口脚本，
-去掉硬编码凭据、修掉导致配置文件永远读不到的致命拼写错误，并补齐依赖清单与单元测试。
+去掉硬编码凭据、修掉导致配置文件永远读不到的致命拼写错误，并补齐依赖清单。
 
 ## 目录结构
 
@@ -14,25 +14,21 @@ Login_whut/
 │   ├── portal.py           # srun 门户认证客户端
 │   ├── netcheck.py         # 联网检测 + Windows 系统代理读取
 │   └── cli.py              # 命令行参数与重试流程
-├── tests/                  # pytest 单元测试（全部 mock，不发起真实请求）
 ├── WHUT/                   # 上游脚本快照（已脱敏），仅作对照，不被主程序引用
 ├── requirements.txt        # 运行时依赖
-├── requirements-dev.txt    # 开发依赖
-├── config.example.json     # 凭据文件示例
-└── pytest.ini
+└── config.example.json     # 凭据文件示例
 ```
 
 ## 依赖情况
 
 - **本地模块依赖：无。** 三份上游脚本的 `import` 全部审计过，只用到标准库（`time` / `random` / `uuid` / `base64` / `winreg`）与一个第三方包。
 - **第三方运行时依赖：仅 `requests`**（见 `requirements.txt`）。
-- 开发额外需要 `pytest`（见 `requirements-dev.txt`）。
 - 依赖已在本项目内落地（`.venv/`，已被 `.gitignore` 忽略），无需全局安装。
 
 ```powershell
 # 依赖已安装到项目内 .venv；如需重建：
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
 ## 快速开始
@@ -102,7 +98,7 @@ python -m venv .venv
 |---|---|---|
 | 1 | `Login_whut.py:68` `encoding='utf=8'` 拼写错误，被裸 `except` 吞掉 → `config.txt` 永远读不到，每次退化为交互输入（**功能失效根因**） | 统一由 `whut_login/config.py` 以 `utf-8` 读取，异常类型明确为 `ConfigError` |
 | 2 | `__file__.split("/")` 在 Windows 下拼路径失败，`config.txt` 保存必然失败；`split("/", -1)` 语义无效 | 改用 `pathlib`，默认路径由包位置推导 |
-| 3 | `"user_mac": self.get_mac_address` 漏写 `()`，实际发送 `bound method` 字符串 | 改为 `get_mac_address()`，并加回归测试 |
+| 3 | `"user_mac": self.get_mac_address` 漏写 `()`，实际发送 `bound method` 字符串 | 改为 `get_mac_address()` |
 | 4 | `config.txt` 未校验行数，仅 1 行时 `config[1]` 抛 `IndexError` | 行数不足时抛可读的 `ConfigError`，忽略空行以兼容 CRLF |
 | 5 | 请求头硬编码 `Content-Length: 109`，与真实表单长度不符 | 移除，交由 requests 计算 |
 | 6 | 失败后无上限 `while` 死循环，无退避、无退出码 | 默认重试 5 次、间隔 10 秒，可用 `--retries 0` 恢复不限次数；返回明确退出码 |
@@ -115,14 +111,6 @@ python -m venv .venv
 
 > `WHUT/LWNK_hardcoded.py` 是上游快照的**脱敏版**：原文件名即学号，且源码内硬编码了真实账号与密码，
 > 现均已替换为占位符，并且原始版本已从 git 历史中清除。
-
-## 测试
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-```
-
-覆盖范围：凭据编码 / JSON 解析 / 读写与字段校验异常、表单与请求头构造（含密码明文提交与上述 bug 的回归用例）、`ac_id` 回退、连通性判定边界、代理构造，以及 CLI 的 `--init-config`、凭据优先级、凭据落盘、重试与退出码。全部用假 Session / 假客户端，不发起真实网络请求。
 
 ## 认证协议要点
 

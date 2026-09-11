@@ -50,7 +50,7 @@ class LoginResult:
 
 
 class PortalClient:
-    """校园网 srun 门户的薄封装，所有网络交互都经由此类，便于测试替换。"""
+    """校园网 srun 门户的薄封装，所有网络交互都经由此类。"""
 
     def __init__(
         self,
