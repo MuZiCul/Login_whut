@@ -8,13 +8,12 @@
 ```
 Login_whut/
 ├── login_whut.py           # 入口：python login_whut.py
-├── whut_login/             # 主包
-│   ├── config.py           # 凭据文件（config.json）读写与校验
-│   ├── portal.py           # srun 门户认证客户端
-│   ├── netcheck.py         # 联网检测 + Windows 系统代理读取
-│   └── cli.py              # 命令行参数与重试流程
-├── requirements.txt        # 运行时依赖
-└── config.example.json     # 凭据文件示例
+├── cli.py                  # 命令行参数与重试流程
+├── config.py               # 凭据文件（config.json）读写与校验；文档内含格式示例
+├── portal.py               # srun 门户认证客户端
+├── netcheck.py             # 联网检测 + Windows 系统代理读取
+├── config.json             # 凭据文件（首次运行时生成，已被 .gitignore 忽略）
+└── requirements.txt        # 运行时依赖
 ```
 
 ## 依赖情况
@@ -32,7 +31,7 @@ python -m venv .venv
 ## 快速开始
 
 ```powershell
-# 1) 创建凭据文件（推荐交互式生成；也可复制 config.example.json 后手工编辑）
+# 1) 创建凭据文件（推荐交互式生成；格式说明与示例见 config.py 模块文档）
 .\.venv\Scripts\python.exe login_whut.py --init-config
 
 # 2) 检查网络是否已连通
@@ -97,7 +96,7 @@ python -m venv .venv
 
 | # | 历史缺陷 | 现行处理 |
 |---|---|---|
-| 1 | `Login_whut.py:68` `encoding='utf=8'` 拼写错误，被裸 `except` 吞掉 → `config.txt` 永远读不到，每次退化为交互输入（**功能失效根因**） | 统一由 `whut_login/config.py` 以 `utf-8` 读取，异常类型明确为 `ConfigError` |
+| 1 | `Login_whut.py:68` `encoding='utf=8'` 拼写错误，被裸 `except` 吞掉 → `config.txt` 永远读不到，每次退化为交互输入（**功能失效根因**） | 统一由 `config.py` 以 `utf-8` 读取，异常类型明确为 `ConfigError` |
 | 2 | `__file__.split("/")` 在 Windows 下拼路径失败，`config.txt` 保存必然失败；`split("/", -1)` 语义无效 | 改用 `pathlib`，默认路径由包位置推导 |
 | 3 | `"user_mac": self.get_mac_address` 漏写 `()`，实际发送 `bound method` 字符串 | 改为 `get_mac_address()` |
 | 4 | `config.txt` 未校验行数，仅 1 行时 `config[1]` 抛 `IndexError` | 行数不足时抛可读的 `ConfigError`，忽略空行以兼容 CRLF |

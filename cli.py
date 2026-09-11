@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from .config import (
+from config import (
     DEFAULT_CONFIG_NAME,
     ConfigError,
     decode_password,
@@ -18,8 +18,8 @@ from .config import (
     load_config,
     save_config,
 )
-from .netcheck import build_proxies, get_windows_proxy, is_online
-from .portal import DEFAULT_PORTAL, LoginResult, PortalClient
+from netcheck import build_proxies, get_windows_proxy, is_online
+from portal import DEFAULT_PORTAL, LoginResult, PortalClient
 
 
 def build_parser() -> argparse.ArgumentParser:

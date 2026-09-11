@@ -10,7 +10,7 @@
 依赖：仅 ``requests``（见 requirements.txt）。
 """
 
-from whut_login.cli import main
+from cli import main
 
 if __name__ == "__main__":
     raise SystemExit(main())

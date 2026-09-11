@@ -78,7 +78,7 @@ def parse_config(text: str) -> tuple[str, str]:
 
 def default_config_path() -> Path:
     """默认凭据文件路径：项目根目录下的 ``config.json``。"""
-    return Path(__file__).resolve().parent.parent / DEFAULT_CONFIG_NAME
+    return Path(__file__).resolve().parent / DEFAULT_CONFIG_NAME
 
 
 def load_config(path: str | Path | None = None) -> tuple[str, str]:
