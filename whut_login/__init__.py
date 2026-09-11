@@ -1,7 +1,6 @@
 """武汉理工大学（WHUT）校园网 srun 门户自动登录。
 
-上游来源：https://github.com/MuZiCul/little_demo 的 ``WHUT/`` 目录，
-本包为其修复并合并后的可用实现。
+本包为独立实现，整合并修复了项目早期三份重复脚本中的缺陷。
 """
 
 from .config import (
