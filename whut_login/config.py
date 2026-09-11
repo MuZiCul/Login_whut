@@ -1,24 +1,35 @@
-"""凭据文件（``config.txt``）的读写。
+"""凭据文件（``config.json``）的读写。
 
-文件格式为 UTF-8 文本、两行：
+文件格式为 UTF-8 JSON::
 
-* 第 1 行：账号（学号 / 工号）
-* 第 2 行：密码，明文或 ``{B}`` + base64 形式均可
+    {
+      "username": "你的学号或工号",
+      "password": "你的密码"
+    }
 
-空行会被忽略，因此 CRLF 换行、末尾多余空行都能正常解析。
+``password`` 支持明文或 ``{B}`` + base64 两种写法（读取时统一还原为明文，
+写出时默认以 ``{B}`` + base64 保存）。
+
+.. warning::
+   本文件只做「与代码分离 + 不入版本库」的隔离，**并非加密存储**。
+   请确保该文件不会被他人读取（Windows 下可用 ``icacls`` 收紧权限，见 README）。
 """
 
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 
 PASSWORD_PREFIX = "{B}"
-DEFAULT_CONFIG_NAME = "config.txt"
+DEFAULT_CONFIG_NAME = "config.json"
+
+USERNAME_FIELD = "username"
+PASSWORD_FIELD = "password"
 
 
 class ConfigError(Exception):
-    """凭据文件缺失或内容不合法。"""
+    """凭据文件缺失、无法解析或字段不合法。"""
 
 
 def encode_password(password: str) -> str:
@@ -44,27 +55,47 @@ def decode_password(password: str) -> str:
 
 
 def parse_config(text: str) -> tuple[str, str]:
-    """解析凭据文本，返回 ``(账号, 明文密码)``。"""
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) < 2:
-        raise ConfigError("凭据文件需要两行内容：第 1 行账号，第 2 行密码")
-    return lines[0], decode_password(lines[1])
+    """解析凭据 JSON 文本，返回 ``(账号, 明文密码)``。
+
+    :raises ConfigError: JSON 语法错误或字段缺失 / 类型不合法。
+    """
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"凭据文件不是合法的 JSON：{exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigError("凭据文件顶层必须是 JSON 对象，例如 {\"username\": ..., \"password\": ...}")
+
+    username = data.get(USERNAME_FIELD)
+    password = data.get(PASSWORD_FIELD)
+    if not isinstance(username, str) or not username.strip():
+        raise ConfigError(f'凭据文件缺少非空字符串字段 "{USERNAME_FIELD}"')
+    if not isinstance(password, str) or not password:
+        raise ConfigError(f'凭据文件缺少非空字符串字段 "{PASSWORD_FIELD}"')
+
+    return username.strip(), decode_password(password)
 
 
 def default_config_path() -> Path:
-    """默认凭据文件路径：项目根目录下的 ``config.txt``。"""
+    """默认凭据文件路径：项目根目录下的 ``config.json``。"""
     return Path(__file__).resolve().parent.parent / DEFAULT_CONFIG_NAME
 
 
 def load_config(path: str | Path | None = None) -> tuple[str, str]:
     """读取凭据文件并返回 ``(账号, 明文密码)``。
 
-    :raises ConfigError: 文件不存在或内容不合法。
+    :raises ConfigError: 文件不存在、无法读取或内容不合法。
     """
     config_path = Path(path) if path is not None else default_config_path()
     if not config_path.is_file():
         raise ConfigError(f"凭据文件不存在：{config_path}")
-    return parse_config(config_path.read_text(encoding="utf-8"))
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"凭据文件读取失败：{exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise ConfigError(f"凭据文件必须是 UTF-8 编码：{exc}") from exc
+    return parse_config(text)
 
 
 def save_config(
@@ -79,6 +110,11 @@ def save_config(
     默认以 ``{B}`` + base64 形式保存密码，与上游脚本保持一致。
     """
     config_path = Path(path) if path is not None else default_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     stored = encode_password(password) if encode else password
-    config_path.write_text(f"{username}\n{stored}\n", encoding="utf-8")
+    payload = {USERNAME_FIELD: username, PASSWORD_FIELD: stored}
+    config_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return config_path

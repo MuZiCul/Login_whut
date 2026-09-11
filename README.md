@@ -10,7 +10,7 @@
 Login_whut/
 ├── login_whut.py           # 入口：python login_whut.py
 ├── whut_login/             # 主包
-│   ├── config.py           # 凭据文件读写（明文 / {B}+base64）
+│   ├── config.py           # 凭据文件（config.json）读写与校验
 │   ├── portal.py           # srun 门户认证客户端
 │   ├── netcheck.py         # 联网检测 + Windows 系统代理读取
 │   └── cli.py              # 命令行参数与重试流程
@@ -18,7 +18,7 @@ Login_whut/
 ├── WHUT/                   # 上游原始脚本快照，仅作对照，不被主程序引用
 ├── requirements.txt        # 运行时依赖
 ├── requirements-dev.txt    # 开发依赖
-├── config.example.txt      # 凭据文件示例
+├── config.example.json     # 凭据文件示例
 └── pytest.ini
 ```
 
@@ -38,9 +38,8 @@ python -m venv .venv
 ## 快速开始
 
 ```powershell
-# 1) 配置凭据（可选，也可运行时交互输入）
-Copy-Item config.example.txt config.txt
-notepad config.txt          # 第 1 行账号，第 2 行密码
+# 1) 创建凭据文件（推荐交互式生成；也可复制 config.example.json 后手工编辑）
+.\.venv\Scripts\python.exe login_whut.py --init-config
 
 # 2) 检查网络是否已连通
 .\.venv\Scripts\python.exe login_whut.py --check-only
@@ -52,14 +51,28 @@ notepad config.txt          # 第 1 行账号，第 2 行密码
 .\.venv\Scripts\python.exe login_whut.py --help
 ```
 
-`config.txt` 格式为两行 UTF-8 文本（不支持注释行，空行会被忽略）：
+## 凭据文件与安全
 
-```
-testuser
-你的密码
+凭据统一放在项目根目录的 `config.json`（UTF-8 JSON），**代码里不再出现任何账号密码**：
+
+```json
+{
+  "username": "testuser",
+  "password": "你的密码"
+}
 ```
 
-第 2 行也可以直接填 `{B}` + base64 形式；两种写法都会在发送前统一编码，读取时自动还原明文。
+- `password` 支持明文或 `{B}` + base64 两种写法：发送前统一编码，读取时自动还原明文。
+- 字段缺失、类型错误、JSON 语法错误、非法 base64 都会抛出明确的 `ConfigError`，不会静默使用错误凭据。
+- 该文件已写入 `.gitignore`，**不会进入版本库**。
+- 读取优先级：命令行参数 → `config.json` → 交互输入（交互输入后若文件不存在会自动生成）。
+
+> 注意：`config.json` 属于「与代码分离 + 不入库」，**并非加密存储**——任何能读到该文件的人都能还原密码。
+> 如需额外收紧权限，可用 Windows ACL 只允许当前用户读写：
+>
+> ```powershell
+> icacls config.json /inheritance:r /grant:r "$env:USERNAME:(R,W)"
+> ```
 
 ## 命令行参数
 
@@ -67,13 +80,14 @@ testuser
 |---|---|
 | `-u, --username` | 账号，优先于凭据文件 |
 | `-p, --password` | 密码（明文或 `{B}+base64`），优先于凭据文件 |
-| `-c, --config` | 凭据文件路径，默认项目根目录 `config.txt` |
+| `-c, --config` | 凭据文件路径，默认项目根目录 `config.json` |
 | `--portal` | 门户地址，默认 `http://172.30.16.34` |
 | `--ac-id` | 指定 `ac_id`；缺省时依次尝试 `0` 与 `5` |
 | `--timeout` | 单次请求超时秒数，默认 5 |
 | `--proxy` / `--no-proxy` | 指定代理 / 禁用代理（默认自动读取 Windows 系统代理） |
 | `--retries` | 重试次数，默认 5；`0` 表示不限次数 |
 | `--interval` | 重试间隔秒数，默认 10 |
+| `--init-config` | 交互式创建凭据文件后退出（不执行登录） |
 | `--save-config` | 把本次凭据写入凭据文件 |
 | `--no-input` | 禁止交互输入，缺少凭据时直接失败（适合计划任务） |
 | `--check-only` | 仅检测网络连通性 |
@@ -95,6 +109,7 @@ testuser
 | 8 | 开启代理但 `ProxyServer` 取值异常时返回 `":"`，拼出无效代理 | 取值校验后再构造，失败视为未配置代理 |
 | 9 | 交互输入密码明文回显 | 改用 `getpass` 掩码输入 |
 | 10 | 三份脚本逻辑重复（近 120 行 × 3） | 合并为单一实现，`ac_id` 候选自动逐个尝试 |
+| 11 | 凭据以两行纯文本存放，格式脆弱、无字段校验、易被误提交 | 改为独立 `config.json`（含字段级校验与明确报错），新增 `--init-config` 生成入口，并纳入 `.gitignore` |
 
 > `WHUT/LWNK_hardcoded.py` 里仍保留上游硬编码的账号密码（作为原始快照）。该文件属私有仓库内容，建议后续单独从上游仓库删除或改为读取环境变量。
 
@@ -104,7 +119,7 @@ testuser
 .\.venv\Scripts\python.exe -m pytest
 ```
 
-覆盖范围：凭据编码/解析/读写与异常分支、表单与请求头构造（含上述 bug 的回归用例）、`ac_id` 回退、连通性判定边界、代理构造，以及 CLI 的凭据优先级、凭据落盘、重试与退出码。全部用假 Session / 假客户端，不发起真实网络请求。
+覆盖范围：凭据编码 / JSON 解析 / 读写与字段校验异常、表单与请求头构造（含上述 bug 的回归用例）、`ac_id` 回退、连通性判定边界、代理构造，以及 CLI 的 `--init-config`、凭据优先级、凭据落盘、重试与退出码。全部用假 Session / 假客户端，不发起真实网络请求。
 
 ## 认证协议要点
 

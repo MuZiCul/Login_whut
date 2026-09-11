@@ -1,6 +1,8 @@
 """凭据模块单元测试。"""
 
 import base64
+import json
+from pathlib import Path
 
 import pytest
 
@@ -41,43 +43,90 @@ class TestDecodePassword:
 
 
 class TestParseConfig:
-    def test_解析两行(self):
-        assert parse_config("123\n456\n") == ("123", "456")
+    def test_解析_json_对象(self):
+        assert parse_config('{"username": "123", "password": "456"}') == ("123", "456")
 
-    def test_忽略空行与_crlf(self):
-        assert parse_config("\r\n123\r\n\r\n456\r\n") == ("123", "456")
-
-    def test_base64_密码被还原为明文(self):
-        text = "123\n{B}" + base64.b64encode(b"456").decode("ascii")
+    def test_密码支持_b_前缀_base64(self):
+        encoded = "{B}" + base64.b64encode(b"456").decode("ascii")
+        text = json.dumps({"username": "123", "password": encoded})
         assert parse_config(text) == ("123", "456")
 
-    @pytest.mark.parametrize("text", ["", "\n", "123", "123\n\n"])
-    def test_行数不足抛_config_error(self, text):
+    def test_支持中文(self):
+        text = json.dumps({"username": "学号", "password": "密码123"}, ensure_ascii=False)
+        assert parse_config(text) == ("学号", "密码123")
+
+    def test_账号两侧空白被去除(self):
+        assert parse_config('{"username": " 123 ", "password": "456"}') == ("123", "456")
+
+    def test_密码保留原始空白(self):
+        assert parse_config('{"username": "1", "password": " 456 "}') == ("1", " 456 ")
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "not json",
+            "[1, 2]",
+            '"just a string"',
+            "{}",
+            '{"username": "1"}',
+            '{"password": "2"}',
+            '{"username": "", "password": "2"}',
+            '{"username": "   ", "password": "2"}',
+            '{"username": "1", "password": ""}',
+            '{"username": 1, "password": "2"}',
+            '{"username": "1", "password": 2}',
+            '{"username": null, "password": "2"}',
+        ],
+    )
+    def test_非法内容抛_config_error(self, text):
         with pytest.raises(ConfigError):
             parse_config(text)
+
+    def test_非法_base64_密码抛_config_error(self):
+        with pytest.raises(ConfigError):
+            parse_config('{"username": "1", "password": "{B}not-base64!!"}')
 
 
 class TestConfigFile:
     def test_保存后读取得到明文密码(self, tmp_path):
-        path = tmp_path / "config.txt"
+        path = tmp_path / "config.json"
         save_config(path, "u1", "s3cret-pwd")
         assert load_config(path) == ("u1", "s3cret-pwd")
 
-    def test_默认以_b_前缀_base64_保存(self, tmp_path):
-        path = tmp_path / "config.txt"
+    def test_保存内容为合法_json_且密码为_b_前缀(self, tmp_path):
+        path = tmp_path / "config.json"
         save_config(path, "u1", "p1")
-        lines = path.read_text(encoding="utf-8").splitlines()
-        assert lines[0] == "u1"
-        assert lines[1].startswith("{B}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert data["username"] == "u1"
+        assert data["password"].startswith("{B}")
 
-    def test_可保存为明文(self, tmp_path):
-        path = tmp_path / "config.txt"
+    def test_可保存明文密码(self, tmp_path):
+        path = tmp_path / "config.json"
         save_config(path, "u1", "p1", encode=False)
-        assert path.read_text(encoding="utf-8").splitlines()[1] == "p1"
+        assert json.loads(path.read_text(encoding="utf-8"))["password"] == "p1"
+
+    def test_中文密码往返(self, tmp_path):
+        path = tmp_path / "config.json"
+        save_config(path, "u1", "密码123")
+        assert load_config(path) == ("u1", "密码123")
+
+    def test_自动创建父目录(self, tmp_path):
+        path = tmp_path / "nested" / "config.json"
+        save_config(path, "u1", "p1")
+        assert path.is_file()
 
     def test_读取不存在的文件抛_config_error(self, tmp_path):
         with pytest.raises(ConfigError):
-            load_config(tmp_path / "missing.txt")
+            load_config(tmp_path / "missing.json")
 
-    def test_默认路径位于项目根目录(self):
-        assert default_config_path().name == "config.txt"
+    def test_读取非_utf8_文件抛_config_error(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_bytes(b"\xff\xfe\x00{}")
+        with pytest.raises(ConfigError):
+            load_config(path)
+
+    def test_默认路径为项目根目录下的_config_json(self):
+        path = default_config_path()
+        assert path.name == "config.json"
+        assert path.parent == Path(__file__).resolve().parent.parent

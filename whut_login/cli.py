@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retries", type=int, default=5, help="登录失败后的重试次数，默认 5；0 表示不限次数")
     parser.add_argument("--interval", type=float, default=10.0, help="重试间隔秒数，默认 10")
     parser.add_argument("--save-config", action="store_true", help="把本次凭据写入凭据文件")
+    parser.add_argument("--init-config", action="store_true", help="交互式创建凭据文件后直接退出")
     parser.add_argument("--no-input", action="store_true", help="禁止交互输入，缺少凭据时直接失败")
     parser.add_argument("--check-only", action="store_true", help="仅检测网络连通性，不执行登录")
     parser.add_argument("-v", "--verbose", action="store_true", help="输出调试信息")
@@ -96,6 +97,32 @@ def resolve_credentials(args: argparse.Namespace) -> tuple[str, str, bool]:
     return username, decode_password(password), from_input
 
 
+def init_config(args: argparse.Namespace) -> int:
+    """交互式创建凭据文件，返回进程退出码。"""
+    if args.no_input and (args.username is None or args.password is None):
+        print("错误：--init-config 依赖交互输入，不能与 --no-input 同时使用。", file=sys.stderr)
+        return 1
+
+    config_path = resolve_config_path(args)
+    print(f"凭据将写入：{config_path}")
+    username = args.username if args.username is not None else input("请输入账号：").strip()
+    password = args.password if args.password is not None else getpass.getpass("请输入密码：")
+
+    if not username or not password:
+        print("错误：账号与密码都不能为空。", file=sys.stderr)
+        return 1
+
+    try:
+        saved = save_config(config_path, username, decode_password(password))
+    except OSError as exc:
+        print(f"错误：凭据写入失败（{exc}）", file=sys.stderr)
+        return 1
+
+    print(f"凭据已写入 {saved}")
+    print("提示：该文件与明文等价，请勿提交到版本库，并确保他人无法读取（可用 icacls 收紧权限，见 README）。")
+    return 0
+
+
 def run_login(
     args: argparse.Namespace,
     username: str,
@@ -133,6 +160,14 @@ def run_login(
 def main(argv: list[str] | None = None) -> int:
     """程序主入口，返回进程退出码（0 成功 / 1 失败）。"""
     args = build_parser().parse_args(argv)
+
+    if args.init_config:
+        try:
+            return init_config(args)
+        except (KeyboardInterrupt, EOFError):
+            print("\n已取消。", file=sys.stderr)
+            return 1
+
     proxies = resolve_proxies(args)
 
     if is_online(timeout=args.timeout, proxies=proxies):
